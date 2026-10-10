@@ -26,6 +26,9 @@ const errorMessage = ref("");
 
 const productSlug = String(route.params.slug);
 
+/**
+ * Mengambil detail produk berdasarkan slug.
+ */
 const loadProduct = async () => {
   isLoading.value = true;
   errorMessage.value = "";
@@ -37,14 +40,22 @@ const loadProduct = async () => {
   } catch (error) {
     console.error("Gagal mengambil product:", error);
 
+    product.value = null;
     errorMessage.value = "Produk tidak ditemukan atau gagal dimuat.";
   } finally {
     isLoading.value = false;
   }
 };
 
+/**
+ * Format harga ke format Rupiah.
+ */
 const formatPrice = (price: number | string) => {
   const numericPrice = Number(price);
+
+  if (Number.isNaN(numericPrice)) {
+    return "Rp 0";
+  }
 
   if (numericPrice === 0) {
     return "Gratis";
@@ -53,38 +64,47 @@ const formatPrice = (price: number | string) => {
   return `Rp ${numericPrice.toLocaleString("id-ID")}`;
 };
 
-const courseInfo = computed(() => {
-  if (!product.value) {
-    return null;
-  }
-
-  return product.value.course;
-});
-
+/**
+ * Kode mata kuliah.
+ *
+ * Product saat ini hanya mempunyai courseId,
+ * bukan relasi course.
+ */
 const productCode = computed(() => {
   if (!product.value) {
     return "-";
   }
 
-  return courseInfo.value?.code || "MATERI";
+  return product.value.courseId ? `COURSE-${product.value.courseId}` : "MATERI";
 });
 
+/**
+ * Nama mata kuliah.
+ *
+ * Karena Product tidak mempunyai properti course/name,
+ * kita gunakan fallback yang aman.
+ */
 const courseName = computed(() => {
   if (!product.value) {
     return "Materi Pembelajaran";
   }
 
-  return courseInfo.value?.name || "Materi Pembelajaran";
+  return "Materi Pembelajaran";
 });
 
+/**
+ * Nama program studi.
+ *
+ * Product saat ini tidak mempunyai relasi studyProgram,
+ * sehingga gunakan nilai default.
+ */
 const programName = computed(() => {
-  if (!product.value) {
-    return "Universitas Terbuka";
-  }
-
-  return courseInfo.value?.studyProgram?.name || "Program Studi";
+  return "Universitas Terbuka";
 });
 
+/**
+ * Identifier produk.
+ */
 const productIdentifier = computed(() => {
   if (!product.value) {
     return "-";
@@ -93,6 +113,9 @@ const productIdentifier = computed(() => {
   return product.value.slug || `produk-${product.value.id}`;
 });
 
+/**
+ * Membeli produk langsung.
+ */
 const buyProduct = () => {
   if (!product.value) {
     return;
@@ -106,6 +129,9 @@ const buyProduct = () => {
   });
 };
 
+/**
+ * Kembali ke halaman sebelumnya.
+ */
 const backToCatalog = () => {
   router.back();
 };
@@ -494,7 +520,7 @@ onMounted(() => {
                   </div>
 
                   <div>
-                    <p class="text-xs text-slate-400">Kode Mata Kuliah</p>
+                    <p class="text-xs text-slate-400">ID Mata Kuliah</p>
 
                     <p class="mt-1 font-mono text-sm font-bold text-indigo-600">
                       {{ productCode }}
@@ -508,6 +534,16 @@ onMounted(() => {
                       class="mt-1 break-all font-mono text-xs font-medium text-slate-600"
                     >
                       {{ productIdentifier }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p class="text-xs text-slate-400">ID Produk</p>
+
+                    <p
+                      class="mt-1 font-mono text-sm font-semibold text-slate-800"
+                    >
+                      #{{ product.id }}
                     </p>
                   </div>
                 </div>

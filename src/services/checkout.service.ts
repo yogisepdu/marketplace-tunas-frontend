@@ -1,11 +1,31 @@
 import api from "./api";
 
+export interface CreateCheckoutItem {
+  productId: number;
+  quantity: number;
+}
+
 export interface CreateCheckoutPayload {
   name: string;
   email: string;
   whatsapp?: string;
+  items: CreateCheckoutItem[];
+}
+
+export interface CheckoutOrderItem {
+  id: number;
   productId: number;
+  productTitle: string;
+  unitPrice: number | string;
   quantity: number;
+  subtotal: number | string;
+}
+
+export interface CheckoutCustomer {
+  id?: number;
+  name: string;
+  email: string;
+  whatsapp?: string | null;
 }
 
 export interface CheckoutOrder {
@@ -16,6 +36,9 @@ export interface CheckoutOrder {
   discountAmount: number | string;
   totalAmount: number | string;
   status: string;
+  checkoutToken?: string;
+  customer?: CheckoutCustomer;
+  items: CheckoutOrderItem[];
 }
 
 interface CreateCheckoutResponse {

@@ -52,12 +52,7 @@ const loadData = async () => {
 
   try {
     await Promise.all([loadProgram(), loadCourses()]);
-
-    console.log("PROGRAM:", program.value);
-    console.log("COURSES:", courses.value);
   } catch (error) {
-    console.error("Gagal mengambil data program:", error);
-
     errorMessage.value = "Data program studi gagal dimuat.";
   } finally {
     isLoading.value = false;

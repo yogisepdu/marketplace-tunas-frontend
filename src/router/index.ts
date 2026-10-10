@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
+import CartView from "../views/CartView.vue";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -32,6 +33,12 @@ const router = createRouter({
       path: "/checkout",
       name: "checkout",
       component: () => import("../views/CheckoutView.vue"),
+    },
+
+    {
+      path: "/cart",
+      name: "cart",
+      component: CartView,
     },
   ],
 

@@ -9,7 +9,7 @@ import { benefits } from "../data/benefits";
 
 import { catalogService } from "../services/catalog.service";
 
-import type { StudyProgram } from "../types/catalog";
+import type { Product, StudyProgram } from "../types/catalog";
 
 import { useRouter } from "vue-router";
 
@@ -26,6 +26,16 @@ const router = useRouter();
 const programs = ref<StudyProgram[]>([]);
 const isLoadingPrograms = ref(false);
 const programError = ref("");
+
+/*
+|--------------------------------------------------------------------------
+| Products
+|--------------------------------------------------------------------------
+*/
+
+const products = ref<Product[]>([]);
+const isLoadingProducts = ref(false);
+const productError = ref("");
 
 /*
 |--------------------------------------------------------------------------
@@ -49,14 +59,33 @@ const loadPrograms = async () => {
 
   try {
     programs.value = await catalogService.getPrograms();
-
-    console.log("PROGRAMS DARI BACKEND:", programs.value);
   } catch (error) {
-    console.error("Gagal mengambil program:", error);
-
     programError.value = "Program studi gagal dimuat. Silakan coba lagi.";
   } finally {
     isLoadingPrograms.value = false;
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| Load Products
+|--------------------------------------------------------------------------
+*/
+
+const loadProducts = async () => {
+  isLoadingProducts.value = true;
+  productError.value = "";
+
+  try {
+    products.value = await catalogService.getProducts();
+
+    console.log("PRODUCTS DARI BACKEND:", products.value);
+  } catch (error) {
+    console.error("Gagal mengambil produk:", error);
+
+    productError.value = "Materi gagal dimuat. Silakan coba lagi.";
+  } finally {
+    isLoadingProducts.value = false;
   }
 };
 
@@ -77,6 +106,7 @@ const openProgram = (program: StudyProgram) => {
 
 onMounted(() => {
   loadPrograms();
+  loadProducts();
 });
 </script>
 
@@ -381,14 +411,82 @@ onMounted(() => {
           </button>
         </div>
 
+        <!-- Loading Products -->
         <div
+          v-if="isLoadingProducts"
+          class="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4"
+        >
+          <div
+            v-for="item in 4"
+            :key="item"
+            class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
+          >
+            <div class="aspect-[16/10] animate-pulse bg-slate-100" />
+
+            <div class="space-y-3 p-4">
+              <div class="h-3 w-20 animate-pulse rounded bg-slate-200" />
+
+              <div class="h-10 animate-pulse rounded bg-slate-200" />
+
+              <div class="h-6 w-28 animate-pulse rounded bg-slate-200" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Error Products -->
+        <div
+          v-else-if="productError"
+          class="rounded-2xl border border-red-200 bg-red-50 p-6"
+        >
+          <div
+            class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div>
+              <p class="font-semibold text-red-700">Gagal memuat materi</p>
+
+              <p class="mt-1 text-sm text-red-600">
+                {{ productError }}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-red-700"
+              @click="loadProducts"
+            >
+              Coba Lagi
+            </button>
+          </div>
+        </div>
+
+        <!-- Products -->
+        <div
+          v-else-if="products.length > 0"
           class="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4"
         >
           <ProductCard
             v-for="product in products"
-            :key="product.code"
-            v-bind="product"
+            :key="product.id"
+            :product="product"
           />
+        </div>
+
+        <!-- Empty -->
+        <div
+          v-else
+          class="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"
+        >
+          <div
+            class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-xl"
+          >
+            📚
+          </div>
+
+          <p class="mt-4 font-semibold text-slate-700">Belum ada materi.</p>
+
+          <p class="mt-1 text-sm text-slate-500">
+            Materi belajar akan ditampilkan setelah tersedia.
+          </p>
         </div>
 
         <button
