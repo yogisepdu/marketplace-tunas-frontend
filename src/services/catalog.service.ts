@@ -8,6 +8,12 @@ import type {
 } from "../types/catalog";
 
 export const catalogService = {
+  /**
+   * Mengambil semua program studi aktif.
+   *
+   * Backend diharapkan hanya mengembalikan
+   * program studi dengan isActive = true.
+   */
   async getPrograms(): Promise<StudyProgram[]> {
     const response =
       await api.get<CatalogResponse<StudyProgram[]>>("/catalog/programs");
@@ -15,6 +21,9 @@ export const catalogService = {
     return response.data.data;
   },
 
+  /**
+   * Mengambil detail program studi berdasarkan ID.
+   */
   async getProgram(id: number): Promise<StudyProgram> {
     const response = await api.get<CatalogResponse<StudyProgram>>(
       `/catalog/programs/${id}`,
@@ -23,7 +32,19 @@ export const catalogService = {
     return response.data.data;
   },
 
-  async getCourses(params?: { programId?: number }): Promise<Course[]> {
+  /**
+   * Mengambil daftar mata kuliah.
+   *
+   * Filter:
+   * - programId
+   * - semester
+   * - search
+   */
+  async getCourses(params?: {
+    programId?: number;
+    semester?: number;
+    search?: string;
+  }): Promise<Course[]> {
     const response = await api.get<CatalogResponse<Course[]>>(
       "/catalog/courses",
       {
@@ -34,6 +55,9 @@ export const catalogService = {
     return response.data.data;
   },
 
+  /**
+   * Mengambil detail mata kuliah berdasarkan ID.
+   */
   async getCourse(id: number): Promise<Course> {
     const response = await api.get<CatalogResponse<Course>>(
       `/catalog/courses/${id}`,
@@ -42,6 +66,16 @@ export const catalogService = {
     return response.data.data;
   },
 
+  /**
+   * Mengambil daftar materi/produk.
+   *
+   * Filter:
+   * - courseId
+   * - search
+   *
+   * Backend diharapkan hanya mengembalikan
+   * produk dengan status ACTIVE untuk customer.
+   */
   async getProducts(params?: {
     courseId?: number;
     search?: string;
@@ -56,9 +90,12 @@ export const catalogService = {
     return response.data.data;
   },
 
+  /**
+   * Mengambil detail materi/produk berdasarkan slug.
+   */
   async getProduct(slug: string): Promise<Product> {
     const response = await api.get<CatalogResponse<Product>>(
-      `/catalog/products/${slug}`,
+      `/catalog/products/${encodeURIComponent(slug)}`,
     );
 
     return response.data.data;

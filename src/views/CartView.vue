@@ -45,22 +45,14 @@ const goBack = (): void => {
  * Lanjut ke checkout.
  */
 const goToCheckout = (): void => {
-  if (isEmpty.value || items.value.length === 0) {
-    return;
-  }
-
-  const item = items.value[0];
-
-  if (!item.slug) {
-    console.error("Slug produk tidak ditemukan:", item);
+  if (isEmpty.value) {
     return;
   }
 
   router.push({
-    path: "/checkout",
+    name: "checkout",
     query: {
-      product: item.slug,
-      quantity: String(item.quantity),
+      mode: "cart",
     },
   });
 };

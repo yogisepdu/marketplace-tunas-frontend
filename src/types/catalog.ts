@@ -1,23 +1,18 @@
+export interface CatalogResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+}
+
 export interface StudyProgram {
   id: number;
   name: string;
-  code: string;
-  slug?: string;
-  description?: string | null;
-  thumbnail?: string | null;
-}
+  code: string | null;
+  description: string | null;
+  image: string | null;
+  isActive: boolean;
 
-export interface Product {
-  id: number;
-  courseId: number;
-  title: string;
-  slug: string;
-  description?: string | null;
-  price: number | string;
-  thumbnail?: string | null;
-  status: string;
-  createdAt?: string;
-  updatedAt?: string;
+  courses?: Course[];
 }
 
 export interface Course {
@@ -25,16 +20,26 @@ export interface Course {
   studyProgramId: number;
   code: string;
   name: string;
-  slug?: string;
-  description?: string | null;
+  semester: number | null;
+  credits: number | null;
+  image: string | null;
+  isActive: boolean;
 
   studyProgram?: StudyProgram;
-
   products?: Product[];
 }
 
-export interface CatalogResponse<T> {
-  success: boolean;
-  data: T;
-  message?: string;
+export interface Product {
+  id: number;
+  courseId: number;
+  title: string;
+  slug: string;
+  description: string | null;
+  price: number | string;
+  thumbnail: string | null;
+  status: ProductStatus;
+  createdAt?: string;
+  updatedAt?: string;
 }
+
+export type ProductStatus = "DRAFT" | "ACTIVE" | "INACTIVE";

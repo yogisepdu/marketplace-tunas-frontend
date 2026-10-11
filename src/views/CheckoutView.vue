@@ -1,34 +1,76 @@
 <script setup lang="ts">
 import { ArrowLeft, CheckCircle2, Clock3, Loader2 } from "lucide-vue-next";
-
 import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
-import { useRouter } from "vue-router";
-
+import { catalogService } from "../services/catalog.service";
 import { checkoutService } from "../services/checkout.service";
 import { loadMidtransSnap } from "../services/midtrans";
 import { paymentService } from "../services/payment.service";
 
+import type { CartItem } from "../stores/cart.store";
 import { cartStore } from "../stores/cart.store";
 
+const route = useRoute();
 const router = useRouter();
 
 /* -------------------------------------------------------------------------- */
-/* Cart                                                                       */
+/* Checkout source                                                            */
 /* -------------------------------------------------------------------------- */
 
-const items = cartStore.items;
-
-const totalProductTypes = computed(() => {
-  return items.value.length;
+/**
+ * Ada 2 jenis checkout:
+ *
+ * 1. direct
+ *    User menekan "Beli Sekarang" dari halaman detail produk.
+ *
+ * 2. cart
+ *    User masuk ke Cart lalu menekan tombol checkout.
+ */
+const checkoutMode = computed<"direct" | "cart">(() => {
+  return route.query.mode === "direct" ? "direct" : "cart";
 });
 
-const totalItems = computed(() => {
-  return items.value.reduce((total, item) => total + item.quantity, 0);
+/**
+ * Slug produk yang digunakan untuk direct checkout.
+ *
+ * Contoh:
+ * /checkout?mode=direct&product=modul-sistem-informasi
+ */
+const directProductSlug = computed<string>(() => {
+  return String(route.query.product || "");
 });
 
-const totalPrice = computed(() => {
-  return items.value.reduce(
+/**
+ * Cart tetap menjadi sumber data untuk checkout mode cart.
+ */
+const cartItems = cartStore.items;
+
+/**
+ * Produk yang benar-benar akan dibeli pada halaman checkout.
+ *
+ * DIRECT:
+ *   checkoutItems = 1 produk dari Product Detail
+ *
+ * CART:
+ *   checkoutItems = seluruh produk dari Cart
+ */
+const checkoutItems = ref<CartItem[]>([]);
+
+/* -------------------------------------------------------------------------- */
+/* Checkout totals                                                            */
+/* -------------------------------------------------------------------------- */
+
+const totalProductTypes = computed<number>(() => {
+  return checkoutItems.value.length;
+});
+
+const totalItems = computed<number>(() => {
+  return checkoutItems.value.reduce((total, item) => total + item.quantity, 0);
+});
+
+const totalPrice = computed<number>(() => {
+  return checkoutItems.value.reduce(
     (total, item) => total + Number(item.price) * item.quantity,
     0,
   );
@@ -63,6 +105,10 @@ const PENDING_ORDER_STORAGE_KEY = "marketplace_pending_order";
 const orderNumber = ref("");
 const checkoutToken = ref("");
 
+const hasPendingOrder = computed<boolean>(() => {
+  return Boolean(orderNumber.value && checkoutToken.value);
+});
+
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -81,7 +127,194 @@ const formatPrice = (value: number | string): string => {
   }).format(amount);
 };
 
-const savePendingOrder = () => {
+/**
+ * Mengambil daftar product ID dari checkout saat ini.
+ */
+const getCurrentProductIds = (): number[] => {
+  return checkoutItems.value
+    .map((item) => Number(item.id))
+    .filter((id) => Number.isInteger(id));
+};
+
+/**
+ * Mengambil daftar product ID dari pending order.
+ */
+const getPendingProductIds = (pendingOrder: any): number[] => {
+  if (!Array.isArray(pendingOrder?.items)) {
+    return [];
+  }
+
+  return pendingOrder.items
+    .map((item: { productId: number | string }) => Number(item.productId))
+    .filter((id: number) => Number.isInteger(id));
+};
+
+/**
+ * Membandingkan daftar produk.
+ *
+ * Quantity tidak dibandingkan.
+ *
+ * Artinya:
+ *
+ * Produk A quantity 1
+ * Produk A quantity 2
+ *
+ * tetap dianggap produk yang sama.
+ *
+ * Yang dibandingkan hanya product ID.
+ */
+const isSameProductSet = (
+  currentProductIds: number[],
+  pendingProductIds: number[],
+): boolean => {
+  if (currentProductIds.length === 0 || pendingProductIds.length === 0) {
+    return false;
+  }
+
+  if (currentProductIds.length !== pendingProductIds.length) {
+    return false;
+  }
+
+  const sortedCurrentIds = [...currentProductIds].sort((a, b) => a - b);
+
+  const sortedPendingIds = [...pendingProductIds].sort((a, b) => a - b);
+
+  return sortedCurrentIds.every(
+    (productId, index) => productId === sortedPendingIds[index],
+  );
+};
+
+/**
+ * Mengecek apakah pending order yang tersimpan
+ * adalah untuk produk yang sama dengan checkout sekarang.
+ *
+ * Ini yang menentukan apakah form customer disabled.
+ */
+const isSamePendingOrder = computed<boolean>(() => {
+  if (!hasPendingOrder.value) {
+    return false;
+  }
+
+  const saved = localStorage.getItem(PENDING_ORDER_STORAGE_KEY);
+
+  if (!saved) {
+    return false;
+  }
+
+  try {
+    const pendingOrder = JSON.parse(saved);
+
+    const currentProductIds = getCurrentProductIds();
+    const pendingProductIds = getPendingProductIds(pendingOrder);
+
+    return isSameProductSet(currentProductIds, pendingProductIds);
+  } catch (error) {
+    console.error("Gagal membaca pending order:", error);
+
+    return false;
+  }
+});
+
+/**
+ * Form customer hanya disabled jika:
+ *
+ * 1. Sedang submit
+ * atau
+ * 2. Ada pending order untuk produk yang sama.
+ *
+ * Jika pending order produknya berbeda,
+ * form tetap enabled.
+ */
+const isCustomerFormDisabled = computed<boolean>(() => {
+  return isSubmitting.value || isSamePendingOrder.value;
+});
+
+/* -------------------------------------------------------------------------- */
+/* Prepare checkout items                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Menyiapkan produk yang akan dibeli.
+ *
+ * DIRECT:
+ *   Ambil satu produk berdasarkan slug dari URL.
+ *
+ * CART:
+ *   Ambil seluruh produk dari cartStore.
+ */
+const prepareCheckoutItems = async (): Promise<void> => {
+  /* ------------------------------------------------------------------------ */
+  /* Checkout dari Cart                                                       */
+  /* ------------------------------------------------------------------------ */
+
+  if (checkoutMode.value === "cart") {
+    checkoutItems.value = cartItems.value.map((item) => ({
+      ...item,
+    }));
+
+    return;
+  }
+
+  /* ------------------------------------------------------------------------ */
+  /* Direct checkout                                                          */
+  /* ------------------------------------------------------------------------ */
+
+  if (!directProductSlug.value) {
+    throw new Error("Produk checkout tidak ditemukan.");
+  }
+
+  const directProduct = await catalogService.getProduct(
+    directProductSlug.value,
+  );
+
+  if (!directProduct) {
+    throw new Error("Produk tidak ditemukan.");
+  }
+
+  /**
+   * Produk direct tidak dimasukkan ke cart.
+   *
+   * Kita hanya membuat object CartItem sementara
+   * untuk kebutuhan tampilan dan proses checkout.
+   */
+  checkoutItems.value = [
+    {
+      id: directProduct.id,
+      courseId: directProduct.courseId,
+      courseCode: null,
+      courseName: null,
+      title: directProduct.title,
+      slug: directProduct.slug,
+      description: directProduct.description ?? null,
+      price: Number(directProduct.price),
+      thumbnail: directProduct.thumbnail ?? null,
+      quantity: 1,
+    },
+  ];
+};
+
+/* -------------------------------------------------------------------------- */
+/* Navigation                                                                 */
+/* -------------------------------------------------------------------------- */
+
+const goBack = (): void => {
+  if (checkoutMode.value === "cart") {
+    router.push("/cart");
+    return;
+  }
+
+  /**
+   * Direct checkout:
+   * kembali ke halaman detail produk sebelumnya.
+   */
+  router.back();
+};
+
+/* -------------------------------------------------------------------------- */
+/* Pending order - save                                                       */
+/* -------------------------------------------------------------------------- */
+
+const savePendingOrder = (): void => {
   if (!orderNumber.value || !checkoutToken.value) {
     return;
   }
@@ -90,7 +323,17 @@ const savePendingOrder = () => {
     orderNumber: orderNumber.value,
     checkoutToken: checkoutToken.value,
 
-    items: items.value.map((item) => ({
+    /**
+     * Simpan mode supaya pending order dari Cart
+     * tidak digunakan pada Direct Checkout.
+     */
+    mode: checkoutMode.value,
+
+    /**
+     * Simpan product ID supaya pending order
+     * hanya dipulihkan jika produknya sama.
+     */
+    items: checkoutItems.value.map((item) => ({
       productId: item.id,
       title: item.title,
       quantity: item.quantity,
@@ -102,7 +345,11 @@ const savePendingOrder = () => {
   localStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
 };
 
-const clearPendingOrder = () => {
+/* -------------------------------------------------------------------------- */
+/* Pending order - clear                                                      */
+/* -------------------------------------------------------------------------- */
+
+const clearPendingOrder = (): void => {
   localStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
 
   orderNumber.value = "";
@@ -113,7 +360,7 @@ const clearPendingOrder = () => {
 /* Restore pending order                                                      */
 /* -------------------------------------------------------------------------- */
 
-const restorePendingOrder = async () => {
+const restorePendingOrder = async (): Promise<void> => {
   const saved = localStorage.getItem(PENDING_ORDER_STORAGE_KEY);
 
   if (!saved) {
@@ -128,19 +375,150 @@ const restorePendingOrder = async () => {
       return;
     }
 
-    orderNumber.value = String(pendingOrder.orderNumber);
+    /* ---------------------------------------------------------------------- */
+    /* Validasi mode checkout                                                 */
+    /* ---------------------------------------------------------------------- */
 
-    checkoutToken.value = String(pendingOrder.checkoutToken);
+    /**
+     * Pending order dari direct checkout tidak boleh
+     * dipakai pada checkout cart.
+     *
+     * Begitu juga sebaliknya.
+     */
+    if (pendingOrder.mode && pendingOrder.mode !== checkoutMode.value) {
+      clearPendingOrder();
+      return;
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* Validasi produk                                                        */
+    /* ---------------------------------------------------------------------- */
+
+    const currentProductIds = getCurrentProductIds();
+
+    const pendingProductIds = getPendingProductIds(pendingOrder);
+
+    /**
+     * INI BAGIAN PALING PENTING.
+     *
+     * Pending order hanya boleh dipulihkan
+     * jika produk checkout sekarang sama dengan
+     * produk yang ada di pending order.
+     */
+    const sameProduct = isSameProductSet(currentProductIds, pendingProductIds);
+
+    /**
+     * Jika produknya berbeda:
+     *
+     * - jangan restore order lama
+     * - jangan restore customer lama
+     * - jangan isi orderNumber
+     * - jangan isi checkoutToken
+     * - hapus pending order lama
+     *
+     * Setelah ini user akan membuat checkout baru.
+     */
+    if (!sameProduct) {
+      clearPendingOrder();
+
+      paymentStatusMessage.value =
+        "Produk checkout berbeda dari pesanan sebelumnya. Silakan melanjutkan checkout baru.";
+
+      return;
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* Ambil order dari backend                                                */
+    /* ---------------------------------------------------------------------- */
+
+    /**
+     * Backend menjadi sumber data utama.
+     */
+    const savedOrderNumber = String(pendingOrder.orderNumber);
+
+    const savedCheckoutToken = String(pendingOrder.checkoutToken);
 
     const order = await paymentService.getOrderStatus(
-      orderNumber.value,
-      checkoutToken.value,
+      savedOrderNumber,
+      savedCheckoutToken,
     );
 
     if (!order) {
       clearPendingOrder();
       return;
     }
+
+    /* ---------------------------------------------------------------------- */
+    /* Simpan identitas order                                                  */
+    /* ---------------------------------------------------------------------- */
+
+    orderNumber.value = savedOrderNumber;
+    checkoutToken.value = savedCheckoutToken;
+
+    /* ---------------------------------------------------------------------- */
+    /* Customer                                                                */
+    /* ---------------------------------------------------------------------- */
+
+    /**
+     * Pulihkan data customer dari order database.
+     *
+     * Karena produknya sudah dipastikan sama,
+     * data ini memang boleh digunakan kembali.
+     */
+    name.value = order.customer?.name ?? "";
+
+    email.value = order.customer?.email ?? "";
+
+    whatsapp.value = order.customer?.whatsapp ?? "";
+
+    /* ---------------------------------------------------------------------- */
+    /* Product / Order Items                                                   */
+    /* ---------------------------------------------------------------------- */
+
+    /**
+     * Order dari backend menjadi sumber kebenaran produk
+     * yang benar-benar sudah dipesan.
+     *
+     * Kita tetap mempertahankan informasi visual dari
+     * checkoutItems yang sudah tersedia jika productId-nya sama.
+     */
+    const existingItems = checkoutItems.value;
+
+    checkoutItems.value = order.items.map((orderItem) => {
+      const existingItem = existingItems.find(
+        (item) => item.id === Number(orderItem.productId),
+      );
+
+      return {
+        id: Number(orderItem.productId),
+
+        courseId: existingItem?.courseId ?? 0,
+
+        courseCode: existingItem?.courseCode ?? null,
+
+        courseName: existingItem?.courseName ?? null,
+
+        title: orderItem.productTitle,
+
+        slug: existingItem?.slug ?? "",
+
+        description: existingItem?.description ?? null,
+
+        price: Number(orderItem.unitPrice),
+
+        thumbnail: existingItem?.thumbnail ?? null,
+
+        /**
+         * Quantity diambil dari database,
+         * bukan dari localStorage/cart.
+         */
+        quantity: Number(orderItem.quantity),
+      };
+    });
+
+    /* ---------------------------------------------------------------------- */
+    /* Already paid                                                           */
+    /* ---------------------------------------------------------------------- */
 
     if (order.status === "PAID" || order.status === "SETTLEMENT") {
       clearPendingOrder();
@@ -150,6 +528,10 @@ const restorePendingOrder = async () => {
       return;
     }
 
+    /* ---------------------------------------------------------------------- */
+    /* Failed / expired                                                       */
+    /* ---------------------------------------------------------------------- */
+
     if (
       order.status === "CANCELLED" ||
       order.status === "EXPIRED" ||
@@ -157,15 +539,26 @@ const restorePendingOrder = async () => {
     ) {
       clearPendingOrder();
 
+      paymentStatusMessage.value =
+        "Pesanan sebelumnya sudah tidak dapat dilanjutkan. Silakan membuat checkout baru.";
+
       return;
     }
 
+    /* ---------------------------------------------------------------------- */
+    /* Pending                                                                 */
+    /* ---------------------------------------------------------------------- */
+
     paymentStatusMessage.value =
-      "Anda memiliki pesanan yang masih menunggu pembayaran.";
+      `Pesanan ${order.orderNumber} masih menunggu pembayaran. ` +
+      "Data pesanan telah dipulihkan dan Anda dapat melanjutkan pembayaran.";
   } catch (error) {
-    console.error("Gagal memulihkan pending order:", error);
+    console.error("Gagal restore pending order:", error);
 
     clearPendingOrder();
+
+    paymentStatusMessage.value =
+      "Pesanan sebelumnya tidak dapat dipulihkan. Silakan membuat checkout baru.";
   }
 };
 
@@ -173,7 +566,7 @@ const restorePendingOrder = async () => {
 /* Start payment                                                              */
 /* -------------------------------------------------------------------------- */
 
-const startPayment = async () => {
+const startPayment = async (): Promise<void> => {
   if (!orderNumber.value || !checkoutToken.value) {
     throw new Error("Informasi pembayaran tidak lengkap.");
   }
@@ -183,13 +576,29 @@ const startPayment = async () => {
     checkoutToken.value,
   );
 
+  /* ------------------------------------------------------------------------ */
+  /* Already paid                                                             */
+  /* ------------------------------------------------------------------------ */
+
   if (currentOrder.status === "PAID" || currentOrder.status === "SETTLEMENT") {
     paymentStatusMessage.value = "Pesanan sudah dibayar.";
 
     clearPendingOrder();
 
+    /**
+     * Hanya checkout dari Cart yang boleh
+     * mengosongkan Cart.
+     */
+    if (checkoutMode.value === "cart") {
+      cartStore.clearCart();
+    }
+
     return;
   }
+
+  /* ------------------------------------------------------------------------ */
+  /* Invalid order status                                                     */
+  /* ------------------------------------------------------------------------ */
 
   if (
     currentOrder.status === "CANCELLED" ||
@@ -202,6 +611,10 @@ const startPayment = async () => {
       "Pesanan sudah tidak dapat dibayar. Silakan buat checkout baru.",
     );
   }
+
+  /* ------------------------------------------------------------------------ */
+  /* Create Midtrans payment                                                  */
+  /* ------------------------------------------------------------------------ */
 
   const payment = await paymentService.createSnapPayment(
     orderNumber.value,
@@ -232,7 +645,15 @@ const startPayment = async () => {
         );
 
         if (latest.status === "PAID" || latest.status === "SETTLEMENT") {
-          cartStore.clearCart();
+          /**
+           * Hanya kosongkan Cart jika user
+           * melakukan checkout dari Cart.
+           *
+           * Direct checkout tidak menyentuh Cart.
+           */
+          if (checkoutMode.value === "cart") {
+            cartStore.clearCart();
+          }
 
           clearPendingOrder();
 
@@ -264,16 +685,26 @@ const startPayment = async () => {
 /* Submit checkout                                                            */
 /* -------------------------------------------------------------------------- */
 
-const submitCheckout = async () => {
+const submitCheckout = async (): Promise<void> => {
   errorMessage.value = "";
-
   paymentStatusMessage.value = "";
 
-  if (items.value.length === 0) {
-    errorMessage.value = "Keranjang masih kosong.";
+  /* ------------------------------------------------------------------------ */
+  /* Validate products                                                        */
+  /* ------------------------------------------------------------------------ */
+
+  if (checkoutItems.value.length === 0) {
+    errorMessage.value =
+      checkoutMode.value === "direct"
+        ? "Produk checkout tidak ditemukan."
+        : "Keranjang masih kosong.";
 
     return;
   }
+
+  /* ------------------------------------------------------------------------ */
+  /* Validate customer                                                        */
+  /* ------------------------------------------------------------------------ */
 
   if (!name.value.trim()) {
     errorMessage.value = "Nama lengkap wajib diisi.";
@@ -295,7 +726,11 @@ const submitCheckout = async () => {
     return;
   }
 
-  const invalidItem = items.value.find(
+  /* ------------------------------------------------------------------------ */
+  /* Validate quantity                                                        */
+  /* ------------------------------------------------------------------------ */
+
+  const invalidItem = checkoutItems.value.find(
     (item) => !Number.isInteger(item.quantity) || item.quantity < 1,
   );
 
@@ -305,15 +740,75 @@ const submitCheckout = async () => {
     return;
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Submit                                                                   */
+  /* ------------------------------------------------------------------------ */
+
   isSubmitting.value = true;
 
   try {
+    /* ---------------------------------------------------------------------- */
+    /* Pending order                                                          */
+    /* ---------------------------------------------------------------------- */
+
+    /**
+     * Jika orderNumber + checkoutToken tersedia,
+     * kita hanya boleh melanjutkan pembayaran
+     * jika order tersebut memang untuk produk
+     * yang sedang checkout.
+     */
+    if (orderNumber.value && checkoutToken.value) {
+      const saved = localStorage.getItem(PENDING_ORDER_STORAGE_KEY);
+
+      let canReusePendingOrder = false;
+
+      if (saved) {
+        try {
+          const pendingOrder = JSON.parse(saved);
+
+          const currentProductIds = getCurrentProductIds();
+
+          const pendingProductIds = getPendingProductIds(pendingOrder);
+
+          canReusePendingOrder = isSameProductSet(
+            currentProductIds,
+            pendingProductIds,
+          );
+        } catch (error) {
+          console.error("Gagal memvalidasi pending order:", error);
+        }
+      }
+
+      /**
+       * Safety check tambahan.
+       *
+       * Jika ternyata orderNumber/token ada tetapi
+       * produknya berbeda, jangan pernah gunakan order lama.
+       */
+      if (canReusePendingOrder) {
+        await startPayment();
+        return;
+      }
+
+      /**
+       * Pending order tidak cocok.
+       *
+       * Hapus token lama dan lanjut membuat
+       * order baru di bawah.
+       */
+      clearPendingOrder();
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* Create new order                                                        */
+    /* ---------------------------------------------------------------------- */
+
     const order = await checkoutService.create({
       name: name.value.trim(),
       email: email.value.trim(),
       whatsapp: whatsapp.value.trim(),
 
-      items: items.value.map((item) => ({
+      items: checkoutItems.value.map((item) => ({
         productId: item.id,
         quantity: item.quantity,
       })),
@@ -327,6 +822,13 @@ const submitCheckout = async () => {
       throw new Error("Checkout token tidak diterima dari server.");
     }
 
+    /**
+     * Simpan order sebelum membuka Midtrans.
+     *
+     * Jadi apabila user refresh ketika
+     * Midtrans belum selesai, order tetap bisa
+     * dipulihkan.
+     */
     savePendingOrder();
 
     await startPayment();
@@ -347,14 +849,36 @@ const submitCheckout = async () => {
 /* -------------------------------------------------------------------------- */
 
 onMounted(async () => {
-  if (items.value.length === 0) {
-    isCheckingExistingOrder.value = false;
-
-    return;
-  }
-
   try {
+    /**
+     * Tentukan dahulu sumber checkout:
+     *
+     * direct → ambil produk dari API
+     * cart   → ambil produk dari cartStore
+     */
+    await prepareCheckoutItems();
+
+    if (checkoutItems.value.length === 0) {
+      errorMessage.value =
+        checkoutMode.value === "direct"
+          ? "Produk checkout tidak ditemukan."
+          : "Keranjang masih kosong.";
+
+      return;
+    }
+
+    /**
+     * Setelah produk siap, baru cek apakah
+     * ada pending order.
+     */
     await restorePendingOrder();
+  } catch (error) {
+    console.error("Gagal menyiapkan checkout:", error);
+
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : "Gagal menyiapkan halaman checkout.";
   } finally {
     isCheckingExistingOrder.value = false;
   }
@@ -381,7 +905,7 @@ onMounted(async () => {
         <button
           type="button"
           class="group inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-indigo-50 hover:text-indigo-600"
-          @click="router.push('/cart')"
+          @click="goBack"
         >
           <ArrowLeft
             :size="17"
@@ -389,7 +913,9 @@ onMounted(async () => {
             class="transition-transform duration-200 group-hover:-translate-x-0.5"
           />
 
-          <span>Kembali ke Keranjang</span>
+          <span>
+            {{ checkoutMode === "cart" ? "Kembali ke Keranjang" : "Kembali" }}
+          </span>
         </button>
       </div>
     </header>
@@ -404,14 +930,14 @@ onMounted(async () => {
           <Loader2 :size="36" class="mx-auto animate-spin text-indigo-600" />
 
           <p class="mt-4 text-sm font-medium text-slate-600">
-            Memeriksa pesanan sebelumnya...
+            Menyiapkan checkout...
           </p>
         </div>
       </div>
 
-      <!-- Empty cart -->
+      <!-- Empty -->
       <div
-        v-else-if="items.length === 0"
+        v-else-if="checkoutItems.length === 0"
         class="mx-auto max-w-xl rounded-2xl bg-white p-8 text-center shadow-sm"
       >
         <div
@@ -421,19 +947,22 @@ onMounted(async () => {
         </div>
 
         <h2 class="mt-5 text-xl font-bold text-slate-900">
-          Keranjang masih kosong
+          Produk tidak tersedia
         </h2>
 
         <p class="mt-2 text-sm leading-6 text-slate-500">
-          Silakan pilih produk terlebih dahulu sebelum melanjutkan ke checkout.
+          {{
+            errorMessage ||
+            "Silakan pilih produk terlebih dahulu sebelum melanjutkan ke checkout."
+          }}
         </p>
 
         <button
           type="button"
           class="mt-6 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
-          @click="router.push('/cart')"
+          @click="goBack"
         >
-          Kembali ke Keranjang
+          Kembali
         </button>
       </div>
 
@@ -461,7 +990,7 @@ onMounted(async () => {
 
             <div class="mt-6 space-y-4">
               <article
-                v-for="item in items"
+                v-for="item in checkoutItems"
                 :key="item.id"
                 class="rounded-xl border border-slate-200 p-4"
               >
@@ -550,7 +1079,15 @@ onMounted(async () => {
               </h2>
 
               <p class="mt-2 text-sm text-slate-500">
-                Pastikan data yang Anda masukkan sudah benar.
+                <template v-if="isSamePendingOrder">
+                  Data pemesan dari pesanan sebelumnya telah dipulihkan karena
+                  produk yang dipilih sama. Anda dapat langsung melanjutkan
+                  pembayaran.
+                </template>
+
+                <template v-else>
+                  Pastikan data yang Anda masukkan sudah benar.
+                </template>
               </p>
             </div>
 
@@ -570,8 +1107,8 @@ onMounted(async () => {
                   type="text"
                   autocomplete="name"
                   placeholder="Masukkan nama lengkap"
-                  class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  :disabled="isSubmitting"
+                  class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                  :disabled="isCustomerFormDisabled"
                 />
               </div>
 
@@ -590,8 +1127,8 @@ onMounted(async () => {
                   type="email"
                   autocomplete="email"
                   placeholder="contoh@email.com"
-                  class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  :disabled="isSubmitting"
+                  class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                  :disabled="isCustomerFormDisabled"
                 />
               </div>
 
@@ -610,8 +1147,8 @@ onMounted(async () => {
                   type="tel"
                   autocomplete="tel"
                   placeholder="08xxxxxxxxxx"
-                  class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  :disabled="isSubmitting"
+                  class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                  :disabled="isCustomerFormDisabled"
                 />
               </div>
 
@@ -641,7 +1178,11 @@ onMounted(async () => {
 
                 <span>
                   {{
-                    isSubmitting ? "Memproses..." : "Lanjutkan ke Pembayaran"
+                    isSubmitting
+                      ? "Memproses..."
+                      : isSamePendingOrder
+                        ? "Lanjutkan Pembayaran"
+                        : "Lanjutkan ke Pembayaran"
                   }}
                 </span>
               </button>
@@ -664,7 +1205,7 @@ onMounted(async () => {
 
             <div class="mt-6 space-y-4">
               <div
-                v-for="item in items"
+                v-for="item in checkoutItems"
                 :key="`summary-${item.id}`"
                 class="flex items-start justify-between gap-4"
               >
@@ -769,6 +1310,7 @@ onMounted(async () => {
 
           <p v-if="orderNumber" class="mt-3 text-xs text-slate-400">
             Order:
+
             <span class="font-semibold text-slate-600">
               {{ orderNumber }}
             </span>

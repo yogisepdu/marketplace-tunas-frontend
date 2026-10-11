@@ -13,9 +13,40 @@ import type { Product, StudyProgram } from "../types/catalog";
 
 import { useRouter } from "vue-router";
 
+import logoUT from "../assets/logo.png";
+
 const searchQuery = ref("");
 
 const router = useRouter();
+
+/*
+|--------------------------------------------------------------------------
+| Image URL
+|--------------------------------------------------------------------------
+*/
+
+const API_URL = import.meta.env.VITE_API_URL;
+
+const MEDIA_BASE_URL = API_URL.replace(/\/api\/?$/, "");
+
+const getProgramImageUrl = (image?: string | null) => {
+  if (!image) return "";
+
+  // Jika image sudah berupa URL lengkap
+  if (/^https?:\/\//i.test(image)) {
+    return image;
+  }
+
+  // Jika image diawali "/"
+  // Contoh: /uploads/study-programs/sistem-informasi.png
+  if (image.startsWith("/")) {
+    return `${MEDIA_BASE_URL}${image}`;
+  }
+
+  // Jika image tidak diawali "/"
+  // Contoh: uploads/study-programs/sistem-informasi.png
+  return `${MEDIA_BASE_URL}/${image}`;
+};
 
 /*
 |--------------------------------------------------------------------------
@@ -59,7 +90,11 @@ const loadPrograms = async () => {
 
   try {
     programs.value = await catalogService.getPrograms();
+
+    console.log("PROGRAM STUDI DARI BACKEND:", programs.value);
   } catch (error) {
+    console.error("Gagal mengambil program studi:", error);
+
     programError.value = "Program studi gagal dimuat. Silakan coba lagi.";
   } finally {
     isLoadingPrograms.value = false;
@@ -88,6 +123,12 @@ const loadProducts = async () => {
     isLoadingProducts.value = false;
   }
 };
+
+/*
+|--------------------------------------------------------------------------
+| Open Program
+|--------------------------------------------------------------------------
+*/
 
 const openProgram = (program: StudyProgram) => {
   router.push({
@@ -119,7 +160,7 @@ onMounted(() => {
     <section class="relative">
       <div
         class="absolute inset-0 -z-10 bg-gradient-to-b from-indigo-50 via-white to-slate-50"
-      />
+      ></div>
 
       <div
         class="mx-auto max-w-7xl px-4 pb-12 pt-10 sm:px-6 sm:pb-16 sm:pt-14 lg:px-8 lg:pb-20 lg:pt-20"
@@ -129,7 +170,8 @@ onMounted(() => {
           <div
             class="mb-5 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm"
           >
-            <span class="h-2 w-2 rounded-full bg-emerald-500" />
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+
             Platform materi belajar digital
           </div>
 
@@ -217,7 +259,7 @@ onMounted(() => {
     <!-- PROGRAM STUDI -->
     <!-- ================================================================ -->
 
-    <section class="bg-white py-12 sm:py-16">
+    <section id="program" class="bg-white py-12 sm:py-16">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <!-- Section Header -->
         <div class="mb-8 flex items-end justify-between gap-4">
@@ -256,13 +298,27 @@ onMounted(() => {
         <!-- Loading -->
         <div
           v-if="isLoadingPrograms"
-          class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
         >
           <div
             v-for="item in 3"
             :key="item"
-            class="h-40 animate-pulse rounded-2xl border border-slate-200 bg-slate-50"
-          />
+            class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
+          >
+            <!-- Image Skeleton -->
+            <div class="aspect-[16/9] animate-pulse bg-slate-100"></div>
+
+            <!-- Content Skeleton -->
+            <div class="space-y-3 p-5">
+              <div class="h-4 w-24 animate-pulse rounded bg-slate-200"></div>
+
+              <div class="h-6 w-3/4 animate-pulse rounded bg-slate-200"></div>
+
+              <div class="h-4 w-full animate-pulse rounded bg-slate-200"></div>
+
+              <div class="h-4 w-2/3 animate-pulse rounded bg-slate-200"></div>
+            </div>
+          </div>
         </div>
 
         <!-- Error -->
@@ -296,57 +352,109 @@ onMounted(() => {
         <!-- Data -->
         <div
           v-else-if="programs.length > 0"
-          class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
         >
           <button
             v-for="program in programs"
             :key="program.id"
             type="button"
-            class="group rounded-2xl border border-slate-200 bg-slate-50 p-5 text-left transition duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:bg-white hover:shadow-lg"
+            class="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/50"
             @click="openProgram(program)"
           >
-            <div class="flex items-start gap-4">
-              <!-- Icon -->
+            <!-- ====================================================== -->
+            <!-- PROGRAM IMAGE -->
+            <!-- ====================================================== -->
+
+            <div
+              class="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-indigo-100 via-slate-100 to-white"
+            >
+              <!-- Actual Image -->
+              <img
+                v-if="program.image"
+                :src="getProgramImageUrl(program.image)"
+                :alt="`Logo ${program.name}`"
+                class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                loading="lazy"
+              />
+
+              <!-- Fallback -->
               <div
-                class="flex h-12 w-12 flex-none items-center justify-center rounded-2xl bg-indigo-100 text-lg font-black text-indigo-600 transition group-hover:bg-indigo-600 group-hover:text-white"
+                v-else
+                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600"
               >
-                {{ program.code?.charAt(0) || "P" }}
+                <div class="text-center text-white">
+                  <div
+                    class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 text-2xl font-black ring-1 ring-white/30 backdrop-blur-sm"
+                  >
+                    {{ program.code?.charAt(0) || "P" }}
+                  </div>
+
+                  <p
+                    class="mt-3 text-xs font-semibold tracking-wide text-white/80"
+                  >
+                    {{ program.code || "PROGRAM" }}
+                  </p>
+                </div>
               </div>
 
-              <!-- Content -->
-              <div class="min-w-0 flex-1">
-                <!-- Code -->
-                <p
-                  class="text-xs font-bold uppercase tracking-wide text-indigo-600"
-                >
-                  {{ program.code }}
-                </p>
+              <!-- Gradient Overlay -->
+              <div
+                class="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/30 via-transparent to-transparent opacity-70"
+              ></div>
 
-                <!-- Name -->
-                <h3 class="mt-1 font-bold text-slate-900">
-                  {{ program.name }}
-                </h3>
+              <!-- Program Badge -->
+              <div
+                class="absolute left-4 top-4 rounded-full border border-white/30 bg-white/90 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-indigo-700 shadow-sm backdrop-blur-sm"
+              >
+                Program Studi
+              </div>
 
-                <!-- Description -->
-                <p
-                  v-if="program.description"
-                  class="mt-2 line-clamp-2 text-xs leading-5 text-slate-500"
-                >
-                  {{ program.description }}
-                </p>
+              <!-- Code -->
+              <div
+                v-if="program.code"
+                class="absolute bottom-3 left-4 rounded-lg bg-slate-950/75 px-2.5 py-1 text-[11px] font-bold tracking-wide text-white backdrop-blur-sm"
+              >
+                {{ program.code }}
+              </div>
+            </div>
 
-                <!-- Action -->
-                <div
-                  class="mt-4 flex items-center gap-1 text-sm font-bold text-indigo-600"
-                >
+            <!-- ====================================================== -->
+            <!-- CONTENT -->
+            <!-- ====================================================== -->
+
+            <div class="p-5">
+              <!-- Name -->
+              <h3
+                class="line-clamp-2 text-base font-bold leading-6 text-slate-900 transition-colors duration-200 group-hover:text-indigo-600"
+              >
+                {{ program.name }}
+              </h3>
+
+              <!-- Description -->
+              <p
+                v-if="program.description"
+                class="mt-2 line-clamp-2 text-xs leading-5 text-slate-500"
+              >
+                {{ program.description }}
+              </p>
+
+              <!-- Action -->
+              <div
+                class="mt-5 flex items-center justify-between border-t border-slate-100 pt-4"
+              >
+                <span class="text-sm font-bold text-indigo-600">
                   Lihat materi
+                </span>
 
+                <span
+                  class="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 transition-all duration-200 group-hover:bg-indigo-600 group-hover:text-white"
+                >
                   <ArrowRight
-                    :size="17"
+                    :size="16"
                     :stroke-width="2"
-                    class="transition-transform duration-200 group-hover:translate-x-1"
+                    class="transition-transform duration-200 group-hover:translate-x-0.5"
                   />
-                </div>
+                </span>
               </div>
             </div>
           </button>
@@ -386,7 +494,7 @@ onMounted(() => {
     <!-- PRODUCTS -->
     <!-- ================================================================ -->
 
-    <section class="bg-slate-50 py-12 sm:py-16">
+    <section id="materi" class="bg-slate-50 py-12 sm:py-16">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="mb-6 flex items-end justify-between gap-4">
           <div>
@@ -421,14 +529,14 @@ onMounted(() => {
             :key="item"
             class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
           >
-            <div class="aspect-[16/10] animate-pulse bg-slate-100" />
+            <div class="aspect-[16/10] animate-pulse bg-slate-100"></div>
 
             <div class="space-y-3 p-4">
-              <div class="h-3 w-20 animate-pulse rounded bg-slate-200" />
+              <div class="h-3 w-20 animate-pulse rounded bg-slate-200"></div>
 
-              <div class="h-10 animate-pulse rounded bg-slate-200" />
+              <div class="h-10 animate-pulse rounded bg-slate-200"></div>
 
-              <div class="h-6 w-28 animate-pulse rounded bg-slate-200" />
+              <div class="h-6 w-28 animate-pulse rounded bg-slate-200"></div>
             </div>
           </div>
         </div>
@@ -552,9 +660,13 @@ onMounted(() => {
     <section class="bg-slate-950 py-14 sm:py-20">
       <div class="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
         <div
-          class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 text-xl font-black text-white shadow-lg shadow-indigo-900/40"
+          class="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-indigo-900/20 ring-1 ring-slate-200"
         >
-          T
+          <img
+            :src="logoUT"
+            alt="Logo Universitas Terbuka"
+            class="h-full w-full object-contain p-2"
+          />
         </div>
 
         <h2

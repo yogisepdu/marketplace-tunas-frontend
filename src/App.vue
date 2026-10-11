@@ -1,9 +1,29 @@
 <script setup lang="ts">
-import MainLayout from "./layouts/MainLayout.vue";
+import { computed } from "vue";
+import { useRoute } from "vue-router";
+
+import Footer from "./components/layout/AppFooter.vue";
+import Navbar from "./components/layout/AppHeader.vue";
+
+const route = useRoute();
+
+const isAdminPage = computed(() => {
+  return route.path.startsWith("/admin");
+});
 </script>
 
 <template>
-  <MainLayout>
+  <template v-if="isAdminPage">
     <RouterView />
-  </MainLayout>
+  </template>
+
+  <template v-else>
+    <Navbar />
+
+    <main>
+      <RouterView />
+    </main>
+
+    <Footer />
+  </template>
 </template>

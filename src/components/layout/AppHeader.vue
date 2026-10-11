@@ -1,3 +1,11 @@
+<script setup lang="ts">
+import logoUT from "../../assets/logo.png";
+
+import { useRouter } from "vue-router";
+
+const router = useRouter();
+</script>
+
 <template>
   <header
     class="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl"
@@ -12,9 +20,13 @@
         aria-label="Marketplace Tunas"
       >
         <div
-          class="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-black text-white shadow-sm"
+          class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-slate-200 transition duration-200 group-hover:ring-indigo-200"
         >
-          T
+          <img
+            :src="logoUT"
+            alt="Logo Universitas Terbuka"
+            class="h-full w-full object-contain p-2"
+          />
         </div>
 
         <div class="hidden sm:block">
@@ -53,11 +65,14 @@
       </nav>
 
       <!-- Desktop Actions -->
+      <!-- Desktop Actions -->
       <div class="hidden items-center gap-3 lg:flex">
         <button
           type="button"
           class="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 hover:text-indigo-600"
           aria-label="Keranjang"
+          title="Keranjang"
+          @click="router.push('/cart')"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -78,6 +93,7 @@
         <button
           type="button"
           class="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+          @click="router.push('/admin/login')"
         >
           Masuk
         </button>
@@ -87,8 +103,10 @@
       <div class="flex items-center gap-1 lg:hidden">
         <button
           type="button"
-          class="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100"
+          class="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 hover:text-indigo-600"
           aria-label="Keranjang"
+          title="Keranjang"
+          @click="router.push('/cart')"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -110,6 +128,7 @@
           type="button"
           class="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100"
           aria-label="Profil"
+          @click="router.push('/admin/login')"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

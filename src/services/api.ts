@@ -9,18 +9,17 @@ const api = axios.create({
   timeout: 15000,
 });
 
-api.interceptors.response.use(
-  (response) => response,
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("admin_access_token");
 
-  (error) => {
-    if (error.response) {
-      console.error("API Error:", error.response.status, error.response.data);
-    } else if (error.request) {
-      console.error("API tidak memberikan response:", error.message);
-    } else {
-      console.error("API request error:", error.message);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
 
+    return config;
+  },
+  (error) => {
     return Promise.reject(error);
   },
 );

@@ -116,7 +116,7 @@ const productIdentifier = computed(() => {
 /**
  * Membeli produk langsung.
  */
-const buyProduct = () => {
+const buyProduct = (): void => {
   if (!product.value) {
     return;
   }
@@ -124,6 +124,7 @@ const buyProduct = () => {
   router.push({
     name: "checkout",
     query: {
+      mode: "direct",
       product: product.value.slug,
     },
   });
