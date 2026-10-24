@@ -85,15 +85,6 @@ const products = computed<Product[]>(() => {
 });
 
 /**
- * Mengecek apakah produk sudah ada di keranjang.
- *
- * Ini adalah sumber status tombol.
- */
-const isProductInCart = (productId: number): boolean => {
-  return cartStore.isInCart(productId);
-};
-
-/**
  * Tambahkan produk ke keranjang.
  */
 const addToCart = (product: Product): void => {
@@ -238,13 +229,6 @@ onMounted(() => {
               >
                 {{ course.name }}
               </h1>
-
-              <p
-                v-if="course.description"
-                class="mt-3 max-w-3xl text-sm leading-6 text-slate-500 sm:text-base"
-              >
-                {{ course.description }}
-              </p>
 
               <div
                 v-if="course.studyProgram"

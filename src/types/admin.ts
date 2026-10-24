@@ -31,7 +31,12 @@ export interface AdminCourse {
   credits: number | null;
   image: string | null;
   isActive: boolean;
-  studyProgram?: { id: number; name: string; code: string | null; image?: string | null };
+  studyProgram?: {
+    id: number;
+    name: string;
+    code: string | null;
+    image?: string | null;
+  };
   _count?: { products?: number };
 }
 

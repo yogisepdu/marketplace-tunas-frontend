@@ -1,9 +1,8 @@
 import { createRouter, createWebHistory } from "vue-router";
 
+import AdminLayout from "../layouts/AdminLayout.vue";
 import api from "../services/api";
 import CartView from "../views/CartView.vue";
-
-import AdminLayout from "../layouts/AdminLayout.vue";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -65,7 +64,9 @@ const router = createRouter({
     {
       path: "/admin",
       component: AdminLayout,
-      meta: { requiresAdmin: true },
+      meta: {
+        requiresAdmin: true,
+      },
       children: [
         {
           path: "",
@@ -152,9 +153,9 @@ router.beforeEach(async (to) => {
 
   const isAdminLogin = to.path === "/admin/login";
 
-  // ---------------------------------
-  // 1. Halaman admin membutuhkan login
-  // ---------------------------------
+  // =========================
+  // ADMIN PAGE
+  // =========================
 
   if (requiresAdmin) {
     if (!token) {
@@ -167,26 +168,12 @@ router.beforeEach(async (to) => {
     }
 
     try {
-      /*
-       * Validasi token langsung ke backend.
-       *
-       * Backend menyediakan:
-       * GET /auth/admin/me
-       *
-       * Token otomatis dikirim oleh api interceptor
-       * sebagai:
-       * Authorization: Bearer <token>
-       */
       await api.get("/auth/admin/me");
 
       return true;
     } catch (error) {
       console.error("Admin authentication failed:", error);
 
-      /*
-       * Token tidak valid / expired.
-       * Hapus session admin.
-       */
       localStorage.removeItem("admin_access_token");
       localStorage.removeItem("admin_user");
 
@@ -199,10 +186,9 @@ router.beforeEach(async (to) => {
     }
   }
 
-  // ---------------------------------
-  // 2. User sudah login
-  //    tidak boleh kembali ke login
-  // ---------------------------------
+  // =========================
+  // ADMIN LOGIN
+  // =========================
 
   if (isAdminLogin && token) {
     try {

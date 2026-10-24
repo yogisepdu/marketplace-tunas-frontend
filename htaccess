@@ -1,0 +1,21 @@
+RewriteEngine On
+
+# ==========================================
+# BACKEND API
+# Jangan ganggu routing backend NestJS
+# ==========================================
+RewriteRule ^api(?:/|$) - [L]
+
+# ==========================================
+# FILE DAN FOLDER YANG SUDAH ADA
+# Biarkan Apache melayani langsung
+# ==========================================
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# ==========================================
+# VUE SPA FALLBACK
+# Semua route frontend diarahkan ke index.html
+# ==========================================
+RewriteRule ^ index.html [L]
